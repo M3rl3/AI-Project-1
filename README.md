@@ -16,7 +16,9 @@ AI Info:
 - The AI characters move around in response to the player character in the scene.
 
 Gameplay & Controls:
+- Pressing the F key assumes control of the player character and attaches the camera to it.
 - The player character can be controlled by the W,A,S,D,Q,E keys.
+- The C key will detach the camera from the player character.
 - Pressing the F1 key will enable/disable free camera controlled by the mouse.
-- Pressing X will render the whole scene in wireframe mode.
+- Pressing X key will render the whole scene in wireframe mode.
 - A moving light-bulb is attached to the player character that illuminates their surroundings.
