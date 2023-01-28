@@ -756,7 +756,7 @@ void Update() {
 
         if (theEditMode == TAKE_CONTROL) {
             if (currentMesh->friendlyName == "theAI") {
-                currentMesh->rotation = glm::lookAt(currentMesh->position, currentMesh->position + player_mesh->position, upVector);
+                currentMesh->rotation = glm::lookAt(currentMesh->position, player_mesh->position - currentMesh->position , upVector);
             }
         }
 
