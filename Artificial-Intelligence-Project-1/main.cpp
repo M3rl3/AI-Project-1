@@ -14,6 +14,7 @@
 #include "cVAOManager/cVAOManager.h"
 #include "cBasicTextureManager/cBasicTextureManager.h"
 #include "cRenderReticle.h"
+#include "cSteeringBehaviours.h"
 
 #include <iostream>
 #include <sstream>
@@ -30,6 +31,7 @@ cVAOManager* VAOMan;
 cBasicTextureManager* TextureMan;
 ParticleAccelerator partAcc;
 cRenderReticle crosshair;
+cSteeringBehaviours AIBehaviour;
 
 sModelDrawInfo player_obj;
 sModelDrawInfo cube_obj;
@@ -39,10 +41,7 @@ cMeshInfo* player_mesh;
 cMeshInfo* cube_mesh;
 cMeshInfo* bulb_mesh;
 
-cMeshInfo* beholder_mesh;
-cMeshInfo* beholder_mesh1;
-cMeshInfo* beholder_mesh2;
-std::vector <cMeshInfo*> beholders;
+std::vector <cMeshInfo*> AIs;
 
 unsigned int readIndex = 0;
 int object_index = 0;
@@ -55,20 +54,16 @@ int counter = 0;
 int another_counter = 0;
 
 bool wireFrame = false;
-bool doOnce = true;
+bool doOnce = false;
 bool enableMouse = false;
 bool mouseClick = false;
-bool spectating = false;
-bool patrolling = true;
-bool fightMode = false;
-bool yes = false;
-bool no = false;
 
 std::vector <std::string> meshFiles;
 std::vector <cMeshInfo*> meshArray;
 std::vector <cMeshInfo*> waypoints;
 
 void ReadFromFile();
+void Face(cMeshInfo* theMesh);
 void ReadSceneDescription();
 void ManageLights();
 float RandomFloat(float a, float b);
@@ -85,12 +80,14 @@ enum eEditMode
 glm::vec3 cameraEye; //loaded from external file
 //glm::vec3 cameraTarget = glm::vec3(-75.0f, 2.0f, 0.0f);
 
-// now controlled by mouse!
+// controlled by mouse
 glm::vec3 cameraTarget = glm::vec3(0.f, 0.f, -1.f);
 eEditMode theEditMode = MOVING_CAMERA;
 
 glm::vec3 cameraDest = glm::vec3(0.f);
 glm::vec3 cameraVelocity = glm::vec3(0.f);
+
+glm::vec3 lastPos = glm::vec3(0.f);
 
 float yaw = 0.f;
 float pitch = 0.f;
@@ -248,28 +245,34 @@ static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, i
         break;
         case TAKE_CONTROL: {
             if (key == GLFW_KEY_W) {
-                player_mesh->particle->position.x += 1.f;
-                //partAcc.UpdateStep(glm::vec3(1, 0, 0), 0.1f);
+                //player_mesh->particle->position.x = 1.f;
+                player_mesh->velocity.x += 0.5f;
+                player_mesh->rotation = glm::quat(glm::vec3(0.f, 67.55f, 0.f));
             }
             if (key == GLFW_KEY_S) {
-                player_mesh->particle->position.x -= 1.f;
-                //partAcc.UpdateStep(glm::vec3(-1, 0, 0), 0.1f);
+                //player_mesh->particle->position.x -= 1.f;
+                player_mesh->velocity.x -= 0.5f;
+                player_mesh->rotation = glm::quat(glm::vec3(0.f, -67.55f, 0.f));
             }
             if (key == GLFW_KEY_A) {
-                player_mesh->particle->position.z -= 1.f;
-                //partAcc.UpdateStep(glm::vec3(0, 0, -1), 0.1f);
+                //player_mesh->particle->position.z -= 1.f;
+                player_mesh->velocity.z -= 0.5f;
+                player_mesh->rotation = glm::quat(glm::vec3(0.f, 0.f, 0.f));
             }
             if (key == GLFW_KEY_D) {
-                player_mesh->particle->position.z += 1.f;
-                //partAcc.UpdateStep(glm::vec3(0, 0, 1), 0.1f);
+                //player_mesh->particle->position.z += 1.f;
+                player_mesh->velocity.z += 0.5f;
+                player_mesh->rotation = glm::quat(glm::vec3(0.f, 135.10f, 0.f));
             }
             if (key == GLFW_KEY_Q) {
-                player_mesh->particle->position.y += 1.f;
-                //partAcc.UpdateStep(glm::vec3(0, 1, 0), 0.1f);
+                //player_mesh->particle->position.y += 1.f;
+                player_mesh->velocity.y += 0.5f;
+                //player_mesh->rotation = glm::quat(glm::vec3(0.f, 1.f, 0.f));
             }
             if (key == GLFW_KEY_E) {
-                player_mesh->particle->position.y -= 1.f;
-                //partAcc.UpdateStep(glm::vec3(0, -1, 0), 0.1f);
+                //player_mesh->particle->position.y -= 1.f;
+                player_mesh->velocity.y -= 0.5f;
+                //player_mesh->rotation = glm::quat(glm::vec3(0.f, -1.f, 0.f));
             }
             // player Speed
             if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
@@ -354,7 +357,7 @@ void Initialize() {
     glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
     glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
 
-    window = glfwCreateWindow(1366, 768, "Final-Exam", NULL, NULL);
+    window = glfwCreateWindow(1366, 768, "AI", NULL, NULL);
 
     // Uncomment for fullscreen support based on current monitor
     // window = glfwCreateWindow(mode->height, mode->width, "Physics 3", currentMonitor, NULL);
@@ -456,6 +459,18 @@ void Render() {
     terrain_mesh->isTerrainMesh = false;
     meshArray.push_back(terrain_mesh);
 
+    sModelDrawInfo flat_plain_obj;
+    LoadModel(meshFiles[9], flat_plain_obj);
+    if (!VAOMan->LoadModelIntoVAO("flat_plain", flat_plain_obj, shaderID)) {
+        std::cerr << "Could not load model into VAO" << std::endl;
+    }
+    cMeshInfo* flat_plain = new cMeshInfo();
+    flat_plain->meshName = "flat_plain";
+    flat_plain->friendlyName = "flat_beholder";
+    flat_plain->RGBAColour = glm::vec4(20.5f, 20.5f, 20.5f, 1.f);
+    flat_plain->useRGBAColour = true;
+    meshArray.push_back(flat_plain);
+
     LoadModel(meshFiles[20], player_obj);
     if (!VAOMan->LoadModelIntoVAO("player", player_obj, shaderID)) {
         std::cerr << "Could not load model into VAO" << std::endl;
@@ -499,20 +514,43 @@ void Render() {
     skybox_sphere_mesh->friendlyName = "skybox_sphere";
     skybox_sphere_mesh->isSkyBoxMesh = true;
     meshArray.push_back(skybox_sphere_mesh);
-
-    sModelDrawInfo AI;
-    LoadModel(meshFiles[20], AI);
-    if (!VAOMan->LoadModelIntoVAO("AI", AI, shaderID)) {
-        std::cerr << "Could not load model into VAO" << std::endl;
+    
+    {
+        cMeshInfo* theAI = new cMeshInfo();
+        theAI->meshName = "player";
+        theAI->friendlyName = "theAI";
+        theAI->useRGBAColour = false;
+        theAI->hasTexture = true;
+        theAI->textures[0] = "ai-notes.bmp";
+        theAI->textureRatios[0] = 1.f;
+        meshArray.push_back(theAI);
+        AIs.push_back(theAI);
     }
-    cMeshInfo* theAI = new cMeshInfo();
-    theAI->meshName = "AI";
-    theAI->friendlyName = "theAI";
-    theAI->useRGBAColour = false;
-    theAI->hasTexture = true;
-    theAI->textures[0] = "mememan.bmp";
-    theAI->textureRatios[0] = 1.f;
-    meshArray.push_back(theAI);
+    
+    {
+        cMeshInfo* theAI = new cMeshInfo();
+        theAI->meshName = "player";
+        theAI->friendlyName = "theAI1";
+        theAI->useRGBAColour = false;
+        theAI->hasTexture = true;
+        theAI->textures[0] = "moon_texture.bmp";
+        theAI->textureRatios[0] = 1.f;
+        meshArray.push_back(theAI);
+        AIs.push_back(theAI);
+    }
+    
+    {
+        cMeshInfo* theAI = new cMeshInfo();
+        theAI->meshName = "player";
+        theAI->friendlyName = "theAI2";
+        theAI->useRGBAColour = false;
+        theAI->hasTexture = true;
+        theAI->textures[0] = "mememan.bmp";
+        theAI->textureRatios[0] = 1.f;
+        meshArray.push_back(theAI);
+        AIs.push_back(theAI);
+    }
+    
 
     // skybox/cubemap textures
     std::cout << "\nLoading Textures";
@@ -566,9 +604,24 @@ void Render() {
     {
         std::cout << "Error: failed to load computer texture.";
     }
+    
+    if (TextureMan->Create2DTextureFromBMPFile("ai-notes.bmp"))
+    {
+        std::cout << "Loaded computer texture." << std::endl;
+    }
+    else
+    {
+        std::cout << "Error: failed to load computer texture.";
+    }
 
     // reads scene descripion files for positioning and other info
     ReadSceneDescription();
+
+    {
+        flat_plain->rotation.x = 0.f;
+        flat_plain->rotation.y = 67.55f;
+        flat_plain->rotation.z = 0.f;
+    }
 
     // initialize the particle to player position
     player_mesh->particle = partAcc.InitParticle(player_mesh->position);
@@ -623,21 +676,12 @@ void Update() {
         if (!enableMouse) {
             cameraTarget = player_mesh->position;
         }
-        else {
-            //player_mesh->rotation.y = (yaw - 67.55f) * 0.05f;
-            //player_mesh->rotation = glm::quat(glm::lookAt(glm::vec3(0), glm::normalize(cameraTarget), glm::vec3(0, 1, 0)));
-            //player_mesh->rotation = glm::quat(player_mesh->position + cameraTarget);
-            //std::cout << cameraTarget.x << ", " << cameraTarget.y << ", " << cameraTarget.z << std::endl;
-            //player_mesh->rotation = glm::lookAt(glm::vec3(0), glm::normalize(cameraTarget), upVector);
-
-            //player_mesh->rotation = glm::lookAt(player_mesh->position, player_mesh->position + cameraTarget, upVector);
-            //player_mesh->rotation += glm::quat(0.f, -67.55f, 0.f, 0.f);
+        // last velocity when it wasnt 0
+        if (player_mesh->velocity != glm::vec3(0.f)) {
+            player_mesh->facingDirection = player_mesh->velocity;
         }
     }
 
-    // Update particle position per frame
-    partAcc.UpdateStep(glm::vec3(1, 0, 0), speed);
-    player_mesh->position = player_mesh->particle->position;
     bulb_mesh->position = player_mesh->position - glm::vec3(75.f, -25.f, 0.f);
 
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
@@ -736,7 +780,6 @@ void Update() {
                         currentMesh->textureRatios[1],
                         currentMesh->textureRatios[2],
                         currentMesh->textureRatios[3]);
-            
         }
         else 
         {
@@ -754,9 +797,86 @@ void Update() {
             glUniform1f(doNotLightLocation, (GLfloat)GL_FALSE);
         }
 
+        // AI code
         if (theEditMode == TAKE_CONTROL) {
+
+            // seek/destroy
             if (currentMesh->friendlyName == "theAI") {
-                currentMesh->rotation = glm::lookAt(currentMesh->position, player_mesh->position - currentMesh->position , upVector);
+
+                //Face(currentMesh);
+
+                if (glm::length(player_mesh->velocity) != 0.f) {
+                    player_mesh->facingDirection = player_mesh->velocity;
+                }
+
+                glm::vec3 towardsTarget = glm::normalize(currentMesh->position - player_mesh->position);
+                glm::vec3 towardsPlayer = -towardsTarget;
+
+                // seeks/flees based on player looking towards or away
+                float dot = glm::dot(towardsTarget, player_mesh->facingDirection);
+                
+                if (dot <= 0.f) {
+                    // seek
+                    currentMesh->velocity = towardsPlayer * 0.4f;
+                }
+                else {
+                    // flee
+                    currentMesh->velocity = -towardsPlayer * 0.4f;
+                }
+            }
+
+            // pursue/evade
+            if (currentMesh->friendlyName == "theAI1") {
+
+                //Face(currentMesh);
+
+                if (glm::length(player_mesh->velocity) != 0.f) {
+
+                    player_mesh->facingDirection = player_mesh->velocity;
+                    player_mesh->velocity = glm::normalize(player_mesh->velocity);
+                }
+
+                // pursues/evades x distance ahead of the player
+                const float aheadDistance = 25.f;
+
+                glm::vec3 aheadOfPlayer = player_mesh->position + player_mesh->facingDirection * aheadDistance;
+
+                glm::vec3 towardsTarget = glm::normalize(currentMesh->position - aheadOfPlayer);
+                glm::vec3 towardsPlayer = -towardsTarget;
+
+                float dot = glm::dot(towardsTarget, player_mesh->facingDirection);
+                
+                if (dot <= 0.f) {
+                    // pursue
+                    currentMesh->velocity = towardsPlayer * 0.4f;
+                }
+                else {
+                    // evade
+                    currentMesh->velocity = -towardsPlayer * 0.4f;
+                }
+            }
+
+            // approach
+            if (currentMesh->friendlyName == "theAI2") {
+
+                //Face(currentMesh);
+
+                if (glm::length(player_mesh->velocity) != 0.f) {
+                    player_mesh->facingDirection = player_mesh->velocity;
+                }
+
+                glm::vec3 towardsTarget = glm::normalize(currentMesh->position - player_mesh->position);
+                glm::vec3 towardsPlayer = -towardsTarget;
+
+                float distance = glm::distance(player_mesh->position, currentMesh->position);
+
+                currentMesh->velocity = towardsPlayer * 0.4f;
+
+                // maintains a 2 radius distance from the player
+                if (distance <= currentMesh->radius * 2.f) {
+                    // approach
+                    currentMesh->velocity = glm::vec3(0.f);
+                }
             }
         }
 
@@ -765,14 +885,18 @@ void Update() {
         // in the scene post every x amount of frames
         // Cause why not?
 
-        /*elapsed_frames++;
+        elapsed_frames++;
         if (elapsed_frames > 100) {
-            for (int j = 0; j < meshArray.size(); j++) {
-                cMeshInfo* theMesh = meshArray[j];
-                RandomizePositions(theMesh);
-            }
+            //for (int j = 0; j < meshArray.size(); j++) {
+            //    cMeshInfo* theMesh = meshArray[j];
+            //    RandomizePositions(theMesh);
+            //}
+            player_mesh->KillAllForces();
             elapsed_frames = 0;
-        }*/
+        }
+
+        // adds the model's velocity to its current position
+        currentMesh->TranslateOverTime(0.5f);
         
         glm::vec3 cursorPos;
 
@@ -806,6 +930,7 @@ void Update() {
             glUniform1f(bIsSkyboxObjectLocation, (GLfloat)GL_FALSE);
         }
         
+        
         sModelDrawInfo modelInfo;
         if (VAOMan->FindDrawInfoByModelName(meshArray[i]->meshName, modelInfo)) {
 
@@ -830,7 +955,6 @@ void Update() {
                 std::cout << "Model not found." << std::endl;
             }
         }
-
 
         // Only draw bounding box around meshes with this boolean value set to true
         if (currentMesh->drawBBox) {
@@ -991,6 +1115,32 @@ float RandomFloat(float a, float b) {
     float diff = b - a;
     float r = random * diff;
     return a + r;
+}
+
+void Face(cMeshInfo* theMesh) {
+
+    float distance = glm::distance(player_mesh->position, theMesh->position);
+
+    if (!theMesh->hasCompletedRotation) {
+        glm::vec3 newFacing = AIBehaviour.Face(
+                theMesh->position,
+                player_mesh->position,
+                theMesh->velocity);
+        float targetAngle = glm::degrees(glm::atan(newFacing.x, newFacing.z));
+
+        theMesh->rotationAngle = abs(targetAngle);
+        theMesh->hasCompletedRotation = true;
+    }
+    // Make the face turning smooth;
+    if (!theMesh->completed && theMesh->counter <= theMesh->rotationAngle) {
+        theMesh->AdjustRoationAngleFromEuler(glm::vec3(0, glm::radians(1.0f), 0));
+        theMesh->counter++;
+    }
+    // Mark face turning as completed and reset counter to zero.
+    if (theMesh->counter > theMesh->rotationAngle && !theMesh->completed) {
+        theMesh->completed = true;
+        theMesh->counter = 0;
+    }
 }
 
 bool RandomizePositions(cMeshInfo* mesh) {

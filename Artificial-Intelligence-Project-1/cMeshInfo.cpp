@@ -3,6 +3,8 @@
 cMeshInfo::cMeshInfo() {
 
 	this->position = glm::vec3(0.f);
+	this->velocity = glm::vec3(0.f);
+	this->facingDirection = glm::vec3(0.f);
 	this->rotation = glm::quat(glm::vec3(0.f));
 	this->colour = glm::vec4(0.f, 0.f, 0.f, 1.f);
 	this->RGBAColour = glm::vec4(0.f, 0.f, 0.f, 1.f);
@@ -16,6 +18,7 @@ cMeshInfo::cMeshInfo() {
 	this->hasTexture = false;
 	this->isSkyBoxMesh = false;
 	this->hasChildMeshes = false;
+	this->radius = 7.f;
 	this->min = glm::vec3(FLT_MAX, FLT_MAX, FLT_MAX);
 	this->max = glm::vec3(FLT_MIN, FLT_MIN, FLT_MIN);
 	this->SetTextureRatiosAcrossTheBoard(0.f);
@@ -23,6 +26,28 @@ cMeshInfo::cMeshInfo() {
 
 cMeshInfo::~cMeshInfo() {
 
+}
+
+void cMeshInfo::LockTarget(glm::vec3 target)
+{
+	this->target = target - this->position;
+	this->velocity = glm::normalize(this->target);
+}
+
+void cMeshInfo::TranslateOverTime(float dt)
+{
+	this->position += this->velocity * dt;
+}
+
+void cMeshInfo::TranslateOverTime(glm::vec3 velocity, float dt)
+{
+	this->velocity = velocity;
+	this->position += this->velocity * dt;
+}
+
+void cMeshInfo::KillAllForces()
+{
+	this->velocity = glm::vec3(0.f);
 }
 
 void cMeshInfo::SetRotationFromEuler(glm::vec3 newEulerAngleXYZ)

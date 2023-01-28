@@ -26,6 +26,13 @@ public:
 	glm::quat rotation;
 	glm::vec4 colour;
 	glm::vec4 RGBAColour;
+	glm::vec3 facingDirection;
+
+	int counter = 0;
+	float radius;
+	float rotationAngle;
+	bool hasCompletedRotation;
+	bool completed = false;
 	
 	//float scale;
 	bool isWireframe;
@@ -54,6 +61,10 @@ public:
 	glm::vec3 min;
 	glm::vec3 max;
 
+	void LockTarget(glm::vec3 target);
+	void TranslateOverTime(float dt);
+	void TranslateOverTime(glm::vec3 velocity, float dt);
+	void KillAllForces();
 	void SetRotationFromEuler(glm::vec3 newEulerAngleXYZ);
 	void AdjustRoationAngleFromEuler(glm::vec3 EulerAngleXYZ_Adjust);
 	void SetUniformScale(float newScale);
